@@ -4,16 +4,15 @@ from PyPDF2 import PdfMerger
 import tempfile
 import os
 from streamlit_pdf_viewer import pdf_viewer
-# 修正点1: streamlit-sortablesをインポート
 from streamlit_sortables import sort_items
 import fitz
-from PyPDF2 import PdfMerger, PdfReader, PdfWriter
+from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
 import gc
-from datetime import datetime 
+from datetime import datetime
 
 def init_session_state():
-    """セッション状態の初期化"""
+    """セッション状態の初期化を行う"""
     if 'pdf_files' not in st.session_state:
         st.session_state.pdf_files = []
         st.session_state.pdf_names = []
@@ -21,7 +20,16 @@ def init_session_state():
         st.session_state.current_page = {}  # ページ状態の保持用
 
 def create_thumbnail(pdf_path, page_num, scale=0.2):
-    """PDFページのサムネイルを生成（メモリ最適化版）"""
+    """PDFページのサムネイルを生成する
+
+    Args:
+        pdf_path (str): PDFファイルのパス
+        page_num (int): ページ番号（0始まり）
+        scale (float, optional): サムネイルの拡大縮小比率. Defaults to 0.2.
+
+    Returns:
+        Image or None: 生成されたサムネイル画像、エラー時はNone
+    """
     try:
         doc = fitz.open(pdf_path)
         page = doc[page_num]
@@ -35,7 +43,14 @@ def create_thumbnail(pdf_path, page_num, scale=0.2):
         return None
 
 def save_uploaded_file(uploaded_file):
-    """アップロードされたファイルを一時ファイルとして保存"""
+    """アップロードされたファイルを一時ファイルとして保存する
+
+    Args:
+        uploaded_file (UploadedFile): アップロードされたファイルオブジェクト
+
+    Returns:
+        str or None: 保存された一時ファイルのパス、エラー時はNone
+    """
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
             tmp_file.write(uploaded_file.getvalue())
@@ -44,9 +59,16 @@ def save_uploaded_file(uploaded_file):
     except Exception as e:
         st.error(f"ファイルの保存に失敗しました: {str(e)}")
         return None
-    
+
 def save_image_as_pdf(image_file):
-    """画像ファイルをPDFに変換して保存"""
+    """画像ファイルをPDFに変換して保存する
+
+    Args:
+        image_file (UploadedFile): アップロードされた画像ファイルオブジェクト
+
+    Returns:
+        str or None: 保存されたPDFファイルのパス、エラー時はNone
+    """
     try:
         image = Image.open(image_file)
         if image.mode == "RGBA":
@@ -60,7 +82,15 @@ def save_image_as_pdf(image_file):
         return None
 
 def merge_pdfs(pdf_paths, progress_bar=None):
-    """PDFファイルの結合"""
+    """PDFファイルの結合を行う
+
+    Args:
+        pdf_paths (list): 結合するPDFファイルのパスリスト
+        progress_bar (Progress or None, optional): 進行状況を表示するプログレスバー. Defaults to None.
+
+    Returns:
+        str or None: 結合されたPDFファイルのパス、エラー時はNone
+    """
     merger = PdfMerger()
     try:
         for i, pdf_path in enumerate(pdf_paths):
@@ -77,7 +107,7 @@ def merge_pdfs(pdf_paths, progress_bar=None):
         return None
 
 def cleanup_temp_files():
-    """一時ファイルの削除"""
+    """一時ファイルの削除を行う"""
     # 現在のセッションで使用中のファイルを取得
     current_files = set(st.session_state.pdf_files)
     temp_files = set(st.session_state.temp_files)
@@ -91,7 +121,12 @@ def cleanup_temp_files():
             pass
 
 def display_pdf_with_navigation(pdf_path, pdf_name):
-    """改善されたPDFビューア（メモリ最適化・エラーハンドリング強化版）"""
+    """PDFのページナビゲーションと表示を行う
+
+    Args:
+        pdf_path (str): PDFファイルのパス
+        pdf_name (str): PDFファイルの名前
+    """
     try:
         reader = PdfReader(pdf_path)
         total_pages = len(reader.pages)
@@ -114,7 +149,7 @@ def display_pdf_with_navigation(pdf_path, pdf_name):
             if total_pages > 30:
                 st.warning("⚠️ 大規模PDFファイルです。表示に時間がかかる場合があります。")
 
-        # サムネイルグリッド表示（最適化版）
+        # サムネイルグリッド表示
         with st.expander("サムネイル表示", expanded=False):
             num_thumbnails = min(5, total_pages)
             thumbnail_cols = st.columns(num_thumbnails)
@@ -131,9 +166,9 @@ def display_pdf_with_navigation(pdf_path, pdf_name):
                                 st.image(thumbnail, caption=f"P.{page_idx + 1}", use_container_width=True)
                                 if st.button("表示", key=f"thumb_{pdf_name}_{page_idx}"):
                                     st.session_state.current_page[pdf_name] = page_idx + 1
-                                    st.rerun()
+                                    st.experimental_rerun()
 
-        # 現在のページのプレビュー（最適化版）
+        # 現在のページのプレビュー
         with st.expander("プレビュー", expanded=True):
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                 writer = PdfWriter()
@@ -151,24 +186,49 @@ def display_pdf_with_navigation(pdf_path, pdf_name):
         st.error(f"PDFの表示中にエラーが発生しました: {str(e)}")
         st.info("PDFファイルが破損しているか、アクセスできない可能性があります。")
 
-def main():
-    st.title("PDF結合アプリケーション")
-    
-    # メモリ使用量の表示（開発用）
+def display_memory_usage():
+    """メモリ使用量を表示する"""
     if st.checkbox("メモリ使用状況を表示", value=False):
         import psutil
         process = psutil.Process()
         st.write(f"現在のメモリ使用量: {process.memory_info().rss / 1024 / 1024:.2f} MB")
 
-    init_session_state()
+def synchronize_session_state(uploaded_files):
+    """セッション状態を現在のアップロード状況に合わせて更新する
 
-    # ファイルアップロード
-    uploaded_files = st.file_uploader(
-        "PDFまたは画像ファイルを選択してください（複数選択可）",
-        type=["pdf", "jpg", "jpeg", "png"],
-        accept_multiple_files=True
-    )
+    Args:
+        uploaded_files (list): 現在アップロードされたファイルのリスト
+    """
+    if uploaded_files is not None:
+        current_uploaded_file_names = [file.name for file in uploaded_files]
+        
+        # セッション状態のファイルリストを現在のアップロード状態に合わせて更新
+        pdf_names_to_keep = []
+        pdf_files_to_keep = []
+        for name, path in zip(st.session_state.pdf_names, st.session_state.pdf_files):
+            if name in current_uploaded_file_names:
+                pdf_names_to_keep.append(name)
+                pdf_files_to_keep.append(path)
+            else:
+                # 一時ファイルを削除
+                try:
+                    os.unlink(path)
+                except:
+                    pass
+        st.session_state.pdf_names = pdf_names_to_keep
+        st.session_state.pdf_files = pdf_files_to_keep
+    else:
+        # すべてのファイルが削除された場合、セッション状態をクリア
+        st.session_state.pdf_names = []
+        st.session_state.pdf_files = []
+        st.session_state.temp_files = []
 
+def process_uploaded_files(uploaded_files):
+    """アップロードされた新規ファイルを処理する
+
+    Args:
+        uploaded_files (list): アップロードされたファイルのリスト
+    """
     if uploaded_files:
         # 新規ファイルの追加
         new_files = [f for f in uploaded_files if f.name not in st.session_state.pdf_names]
@@ -184,6 +244,8 @@ def main():
                 st.session_state.pdf_files.append(temp_path)
                 st.session_state.pdf_names.append(file.name)
 
+def display_pdf_management_ui():
+    """PDFファイルの並び替えとプレビューを表示するUIを構築する"""
     if st.session_state.pdf_files:
         st.write("**PDFファイルの並び替えと管理:**")
         
@@ -203,39 +265,60 @@ def main():
             st.session_state.pdf_names = new_names
 
         # プレビューと操作UI
-        for i, (pdf_path, pdf_name) in enumerate(zip(st.session_state.pdf_files, st.session_state.pdf_names)):
+        for pdf_path, pdf_name in zip(st.session_state.pdf_files, st.session_state.pdf_names):
             st.write(f"**{pdf_name}**")
             col1, col2 = st.columns([4, 1])
             
             with col1:
                 display_pdf_with_navigation(pdf_path, pdf_name)
 
-        # PDF結合処理
+def process_pdf_merge():
+    """PDF結合処理を実行する"""
+    if st.session_state.pdf_files:
         if st.button("PDFを結合"):
-            if len(st.session_state.pdf_files) > 0:
-                progress_bar = st.progress(0)
-                st.write("PDFを結合中...")
-                
-                merged_pdf_path = merge_pdfs(st.session_state.pdf_files, progress_bar)
-                if merged_pdf_path:
-                    st.success("PDF結合が完了しました！")
+            progress_bar = st.progress(0)
+            st.write("PDFを結合中...")
+            
+            merged_pdf_path = merge_pdfs(st.session_state.pdf_files, progress_bar)
+            if merged_pdf_path:
+                st.success("PDF結合が完了しました！")
 
-                    # filenameにはdateで日付を入れる
-                    file_neme = f"merged_pdf_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
-                    
-                    with open(merged_pdf_path, "rb") as f:
-                        st.download_button(
-                            "結合したPDFをダウンロード",
-                            f,
-                            file_name=file_neme,
-                            mime="application/pdf"
-                        )
-                    
-                    # 結合後の一時ファイルを削除
-                    try:
-                        os.unlink(merged_pdf_path)
-                    except:
-                        pass
+                # ファイル名に日付を入れる
+                file_name = f"merged_pdf_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                
+                with open(merged_pdf_path, "rb") as f:
+                    st.download_button(
+                        "結合したPDFをダウンロード",
+                        f,
+                        file_name=file_name,
+                        mime="application/pdf"
+                    )
+                
+                # 結合後の一時ファイルを削除
+                try:
+                    os.unlink(merged_pdf_path)
+                except:
+                    pass
+
+def main():
+    """メイン関数"""
+    st.title("PDF結合アプリケーション")
+    
+    display_memory_usage()
+
+    init_session_state()
+
+    # ファイルアップロード
+    uploaded_files = st.file_uploader(
+        "PDFまたは画像ファイルを選択してください（複数選択可）",
+        type=["pdf", "jpg", "jpeg", "png"],
+        accept_multiple_files=True
+    )
+
+    synchronize_session_state(uploaded_files)
+    process_uploaded_files(uploaded_files)
+    display_pdf_management_ui()
+    process_pdf_merge()
 
     # 一時ファイルのクリーンアップ
     cleanup_temp_files()
