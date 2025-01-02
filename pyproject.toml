@@ -13,4 +13,5 @@ dependencies = [
     "streamlit-sortables>=0.3.0",
     "pymupdf>=1.25.1",
     "pdf2image>=1.17.0",
+    "psutil>=6.1.1",
 ]
