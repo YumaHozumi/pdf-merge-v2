@@ -1,0 +1,16 @@
+[project]
+name = "streamlist-test"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "matplotlib>=3.9.4",
+    "pypdf2>=3.0.1",
+    "scikit-learn>=1.6.0",
+    "streamlit-pdf-viewer>=0.0.20",
+    "streamlit>=1.41.1",
+    "streamlit-sortables>=0.3.0",
+    "pymupdf>=1.25.1",
+    "pdf2image>=1.17.0",
+]
