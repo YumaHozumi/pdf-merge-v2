@@ -95,11 +95,8 @@ def save_image_as_pdf(image_file, preserve_resolution=True):
             image = Image.open(image_file)
             if image.mode == "RGBA":
                 image = image.convert("RGB")
-            # ここで解像度を調整
-            max_size = (1024, 1024)  # 最大サイズ（ピクセル）
-            image.thumbnail(max_size, Image.ANTIALIAS)
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                image.save(tmp_file.name, "PDF")
+                image.save(tmp_file.name, "PDF", resolution=100.0)
                 st.session_state.temp_files.append(tmp_file.name)
                 return tmp_file.name
     except Exception as e:
