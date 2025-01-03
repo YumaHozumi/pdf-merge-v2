@@ -60,23 +60,48 @@ def save_uploaded_file(uploaded_file):
         st.error(f"ファイルの保存に失敗しました: {str(e)}")
         return None
 
-def save_image_as_pdf(image_file):
+def save_image_as_pdf(image_file, preserve_resolution=True):
     """画像ファイルをPDFに変換して保存する
 
     Args:
         image_file (UploadedFile): アップロードされた画像ファイルオブジェクト
+        preserve_resolution (bool, optional): 解像度を保持するかどうか. Defaults to True.
 
     Returns:
         str or None: 保存されたPDFファイルのパス、エラー時はNone
     """
     try:
-        image = Image.open(image_file)
-        if image.mode == "RGBA":
-            image = image.convert("RGB")
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            image.save(tmp_file.name, "PDF", resolution=100.0)
-            st.session_state.temp_files.append(tmp_file.name)
-            return tmp_file.name
+        if preserve_resolution:
+            # 解像度を保持するバージョン（img2pdfを使用）
+            import img2pdf
+            # 画像をバイトデータとして読み込む
+            img_bytes = image_file.read()
+            # RGBAの場合はRGBに変換
+            image = Image.open(image_file)
+            if image.mode == "RGBA":
+                image = image.convert("RGB")
+                # 変換後の画像をバイトデータにする
+                from io import BytesIO
+                img_byte_arr = BytesIO()
+                image.save(img_byte_arr, format='PNG')
+                img_bytes = img_byte_arr.getvalue()
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                pdf_bytes = img2pdf.convert(img_bytes)
+                tmp_file.write(pdf_bytes)
+                st.session_state.temp_files.append(tmp_file.name)
+                return tmp_file.name
+        else:
+            # 解像度を落とすバージョン（Pillowを使用）
+            image = Image.open(image_file)
+            if image.mode == "RGBA":
+                image = image.convert("RGB")
+            # ここで解像度を調整
+            max_size = (1024, 1024)  # 最大サイズ（ピクセル）
+            image.thumbnail(max_size, Image.ANTIALIAS)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                image.save(tmp_file.name, "PDF")
+                st.session_state.temp_files.append(tmp_file.name)
+                return tmp_file.name
     except Exception as e:
         st.error(f"画像のPDF変換に失敗しました: {str(e)}")
         return None
@@ -223,7 +248,7 @@ def synchronize_session_state(uploaded_files):
         st.session_state.pdf_files = []
         st.session_state.temp_files = []
 
-def process_uploaded_files(uploaded_files):
+def process_uploaded_files(uploaded_files, preserve_resolution):
     """アップロードされた新規ファイルを処理する
 
     Args:
@@ -236,7 +261,7 @@ def process_uploaded_files(uploaded_files):
             if file.type in ['application/pdf']:
                 temp_path = save_uploaded_file(file)
             elif file.type in ['image/jpeg', 'image/png']:
-                temp_path = save_image_as_pdf(file)
+                temp_path = save_image_as_pdf(file, preserve_resolution)
             else:
                 st.warning(f"サポートされていないファイル形式です: {file.type}")
                 continue
@@ -272,27 +297,32 @@ def display_pdf_management_ui():
             with col1:
                 display_pdf_with_navigation(pdf_path, pdf_name)
 
+def display_download_button():
+    """サイドバーにダウンロードボタンを表示する"""
+    if st.session_state.get('merged_pdf_bytes'):
+        st.sidebar.write("## 結合したPDFをダウンロード")
+        st.sidebar.download_button(
+            "ダウンロード",
+            data=st.session_state.merged_pdf_bytes,
+            file_name=st.session_state.merged_file_name,
+            mime="application/pdf"
+        )
+
 def process_pdf_merge():
     """PDF結合処理を実行する"""
-    if st.session_state.pdf_files:
-        if st.button("PDFを結合"):
-            progress_bar = st.progress(0)
-            st.write("PDFを結合中...")
-            
+    # ボタンをサイドバーに配置
+    merge_disabled = not bool(st.session_state.pdf_files)
+    if st.sidebar.button("PDFを結合", disabled=merge_disabled):
+        with st.spinner("PDFを結合中..."):
+            progress_bar = st.sidebar.progress(0)
             merged_pdf_path = merge_pdfs(st.session_state.pdf_files, progress_bar)
             if merged_pdf_path:
-                st.success("PDF結合が完了しました！")
+                st.sidebar.success("PDF結合が完了しました！")
+                st.session_state.merged_file_name = f"merged_pdf_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
 
-                # ファイル名に日付を入れる
-                file_name = f"merged_pdf_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
-                
+                # 結合したPDFをバイトデータとして読み込み、セッション状態に保存
                 with open(merged_pdf_path, "rb") as f:
-                    st.download_button(
-                        "結合したPDFをダウンロード",
-                        f,
-                        file_name=file_name,
-                        mime="application/pdf"
-                    )
+                    st.session_state.merged_pdf_bytes = f.read()
                 
                 # 結合後の一時ファイルを削除
                 try:
@@ -303,10 +333,17 @@ def process_pdf_merge():
 def main():
     """メイン関数"""
     st.title("PDF結合アプリケーション")
-    
-    display_memory_usage()
 
     init_session_state()
+
+    # 画像の解像度オプションを選択
+    st.sidebar.write("**画像のPDF変換オプション**")
+    preserve_resolution = st.sidebar.radio(
+        "画像をPDFに変換する際の解像度を選択してください。",
+        ('元の解像度を保持する', '解像度を下げる'),
+        index=0
+    )
+    preserve_resolution = (preserve_resolution == '元の解像度を保持する')
 
     # ファイルアップロード
     uploaded_files = st.file_uploader(
@@ -316,9 +353,10 @@ def main():
     )
 
     synchronize_session_state(uploaded_files)
-    process_uploaded_files(uploaded_files)
+    process_uploaded_files(uploaded_files, preserve_resolution)
     display_pdf_management_ui()
     process_pdf_merge()
+    display_download_button()
 
     # 一時ファイルのクリーンアップ
     cleanup_temp_files()
